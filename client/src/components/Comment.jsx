@@ -1,18 +1,84 @@
 import IconBtn from "./IconBtn";
-import { FaEdit, FaHeart, FaReply, FaTrash } from "react-icons/fa";
+import { FaEdit, FaHeart, FaRegHeart, FaReply, FaTrash } from "react-icons/fa";
 import { usePost } from "../../contexts/PostContext";
 import CommentList from "./CommentList";
 import { useState } from "react";
+import { useAsyncFn } from "../hooks/useAsync";
+import { useUser } from "../hooks/useUser";
+
+import {
+  createComment,
+  deleteComment,
+  toggleCommentLike,
+  updateComment,
+} from "../services/comments";
+import { CommentForm } from "./CommentForm";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 });
 
-export default function Comment({ id, message, user, createdAt }) {
-  const { getReplies, post } = usePost();
+export default function Comment({
+  id,
+  message,
+  user,
+  createdAt,
+  likeCount,
+  likedByMe,
+}) {
+  const [areChildrenHidden, setAreChildrenHidden] = useState(false);
+  const [isReplying, setIsReplying] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  // * CONTEXT AND CLIENT SIDE
+  const {
+    post,
+    getReplies,
+    createLocalComment,
+    updateLocalComment,
+    deleteLocalComment,
+    toggleLocalCommentLike,
+  } = usePost();
+
+  // * MAKES AN HTTP REQUEST
+  const createCommentFn = useAsyncFn(createComment);
+  const updateCommentFn = useAsyncFn(updateComment);
+  const deleteCommentFn = useAsyncFn(deleteComment);
+  const toggleCommentLikeFn = useAsyncFn(toggleCommentLike);
+
   const childComments = getReplies(id);
-  const [ areChildrenHidden, setAreChildrenHidden ] = useState(false);
+  const currentUser = useUser();
+
+  function onCommentReply(message) {
+    return createCommentFn
+      .execute({ postId: post.id, message, parentId: id })
+      .then((comment) => {
+        setIsReplying(false);
+        createLocalComment(comment);
+      });
+  }
+
+  function onCommentUpdate(message) {
+    return updateCommentFn
+      .execute({ postId: post.id, message, id })
+      .then((comment) => {
+        setIsEditing(false);
+        console.log(comment);
+        updateLocalComment(id, comment.message);
+      });
+  }
+
+  function onCommentDelete() {
+    return deleteCommentFn
+      .execute({ postId: post.id, id })
+      .then((comment) => deleteLocalComment(comment.id));
+  }
+
+  function onToggleCommentLike() {
+    return toggleCommentLikeFn
+      .execute({ id, postId: post.id })
+      .then(({ addLike }) => toggleLocalCommentLike(id, addLike));
+  }
 
   return (
     <>
@@ -24,18 +90,62 @@ export default function Comment({ id, message, user, createdAt }) {
           </span>
         </div>
 
-        <div className="message">{message}</div>
-
+        {isEditing ? (
+          <CommentForm
+            autoFocus
+            initialValue={message}
+            onSubmit={onCommentUpdate}
+            loading={updateCommentFn.loading}
+            error={updateCommentFn.error}
+          />
+        ) : (
+          <div className="message">{message}</div>
+        )}
         <div className="footer">
-          <IconBtn Icon={FaHeart} aria-label="Like">
-            2
+          <IconBtn
+          onClick={onToggleCommentLike}
+          disabled={toggleCommentLikeFn.loading}
+            Icon={likedByMe ? FaHeart : FaRegHeart}
+            aria-label={likedByMe ? "Unlike" : "Like"}
+          >
+            {likeCount}
           </IconBtn>
-          <IconBtn Icon={FaReply} aria-label="Reply" />
-          <IconBtn Icon={FaEdit} aria-label="Edit" />
-          <IconBtn Icon={FaTrash} aria-label="Delete" color="danger" />
+          <IconBtn
+            onClick={() => setIsReplying((prev) => !prev)}
+            isActive={isReplying}
+            Icon={FaReply}
+            aria-label={isReplying ? "Cancel Reply" : "Reply"}
+          />
+          {user.id === currentUser.id && (
+            <>
+              <IconBtn
+                onClick={() => setIsEditing((prev) => !prev)}
+                isActive={isEditing}
+                Icon={FaEdit}
+                aria-label={isEditing ? "Cancel Edit" : "Edit"}
+              />
+              <IconBtn
+                Icon={FaTrash}
+                disabled={deleteCommentFn.loading}
+                onClick={onCommentDelete}
+                aria-label="Delete"
+                color="danger"
+              />
+            </>
+          )}
         </div>
       </div>
 
+      {isReplying && (
+        <div className="mt-1 ml-3">
+          <CommentForm
+            autoFocus
+            onSubmit={onCommentReply}
+            loading={createCommentFn.loading}
+            error={createCommentFn.error}
+          />
+        </div>
+      )}
       {childComments?.length > 0 && (
         <>
           <div
@@ -43,12 +153,21 @@ export default function Comment({ id, message, user, createdAt }) {
               areChildrenHidden ? "hide" : ""
             }`}
           >
-            <button onClick={() => setAreChildrenHidden(true)} className="collapse-line" aria-label="Hide Replies" />
+            <button
+              onClick={() => setAreChildrenHidden(true)}
+              className="collapse-line"
+              aria-label="Hide Replies"
+            />
             <div className="nested-comments">
-                <CommentList comments={childComments}/>
+              <CommentList comments={childComments} />
             </div>
           </div>
-          <button className={`btn mt-1 ${!areChildrenHidden} ? "hide" : "`} onClick={() => setAreChildrenHidden(false)}>Show Replies</button>
+          <button
+            className={`btn mt-1 ${!areChildrenHidden} ? "hide" : "`}
+            onClick={() => setAreChildrenHidden(false)}
+          >
+            Show Replies
+          </button>
         </>
       )}
     </>

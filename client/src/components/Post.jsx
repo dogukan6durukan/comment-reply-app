@@ -1,14 +1,15 @@
 import { usePost } from "../../contexts/PostContext"
 import { useAsync, useAsyncFn } from "../hooks/useAsync"
-import createComment from "../services/comments"
+import { createComment } from "../services/comments"
 import { CommentForm } from "./CommentForm"
 import CommentList from "./CommentList"
 
 
 export default function Post() {
-  const { post, rootComments, createLocalComment } = usePost()
-  const { loading, error, execute: createCommentFn } = useAsyncFn(createComment)
+  const { post, rootComments, createLocalComment } = usePost();
+  const { loading, error, execute: createCommentFn } = useAsyncFn(createComment);
 
+  // * ADDING THE LOCAL COMMENT TO CONTEXT WHEN COMMENT CREATED FROM CLIENT 
   function onCommentCreate(message) {
     return createCommentFn({ postId: post.id, message }).then(
       createLocalComment
